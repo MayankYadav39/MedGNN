@@ -40,7 +40,7 @@ if __name__ == "__main__":
     parser.add_argument('--nodedim', type=int, default=10)
 
     # optimization
-    parser.add_argument("--num_workers", type=int, default=10, help="data loader num workers")
+    parser.add_argument("--num_workers", type=int, default=0, help="data loader num workers")
     parser.add_argument("--itr", type=int, default=1, help="experiments times")
     parser.add_argument("--train_epochs", type=int, default=10, help="train epochs")
     parser.add_argument("--batch_size", type=int, default=64, help="batch size of train input data")
@@ -52,6 +52,18 @@ if __name__ == "__main__":
     parser.add_argument("--use_amp", action="store_true", default=False, help="use automatic mixed precision training")
     parser.add_argument("--swa", action="store_true", default=False, help="use stochastic weight averaging")
 
+    # Monte Carlo Dropout for uncertainty estimation
+    parser.add_argument("--enable_mc_dropout", action="store_true", default=False,
+                        help="enable Monte Carlo dropout for uncertainty estimation")
+    parser.add_argument("--mc_samples", type=int, default=10,
+                        help="number of MC samples for uncertainty estimation during inference")
+    parser.add_argument("--mc_dropout_rate", type=float, default=None,
+                        help="dropout rate for MC dropout (if None, uses --dropout value)")
+    parser.add_argument("--enable_bayesian", action="store_true", default=False,
+                        help="use Bayesian layers for better uncertainty estimation")
+    parser.add_argument("--explain", action="store_true", default=False,
+                        help="generate explanations for high-uncertainty samples")
+
     # GPU
     parser.add_argument("--use_gpu", type=bool, default=True, help="use gpu")
     parser.add_argument("--gpu", type=int, default=0, help="gpu")
@@ -60,6 +72,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
+    
+    # Set MC dropout rate to regular dropout if not specified
+    if args.mc_dropout_rate is None:
+        args.mc_dropout_rate = args.dropout
 
     if args.use_gpu and args.use_multi_gpu:
         args.devices = args.devices.replace(" ", "")
@@ -115,6 +131,10 @@ if __name__ == "__main__":
                 ">>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<".format(setting)
             )
             exp.test(setting)
+            
+            if getattr(args, 'explain', False):
+                exp.explain(setting)
+            
             torch.cuda.empty_cache()
     else:
         for ii in range(args.itr):

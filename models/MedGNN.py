@@ -6,6 +6,7 @@ from layers.Medformer_EncDec import Encoder, EncoderLayer
 from layers.SelfAttention_Family import FormerLayer, DifferenceFormerlayer
 from layers.Multi_Resolution_GNN import MRGNN
 from layers.Difference_Pre import DifferenceDataEmb, DataRestoration
+from layers.BayesianLayers import BayesianLinear, AleatoricLinear
 
 
 class Model(nn.Module):
@@ -21,12 +22,17 @@ class Model(nn.Module):
         self.output_attention = configs.output_attention
         self.activation = configs.activation
         self.resolution_list = list(map(int, configs.resolution_list.split(",")))
+        self.enable_bayesian = getattr(configs, 'enable_bayesian', False)
 
 
         self.res_num = len(self.resolution_list)
         self.stride_list = self.resolution_list
         self.res_len = [int(self.seq_len//res)+1 for res in self.resolution_list]
         self.augmentations = configs.augmentations.split(",")
+        
+        # Monte Carlo Dropout configuration
+        self.enable_mc_dropout = getattr(configs, 'enable_mc_dropout', False)
+        self.mc_samples = getattr(configs, 'mc_samples', 10)
 
         # step1: multi_resolution_data
         self.multi_res_data = Multi_Resolution_Data(self.enc_in, self.resolution_list, self.stride_list)
@@ -45,12 +51,14 @@ class Model(nn.Module):
                         self.d_model,
                         self.n_heads,
                         self.dropout,
-                        self.output_attention
+                        self.output_attention,
+                        use_mc_dropout=self.enable_mc_dropout,
                     ),
                     configs.d_model,
                     configs.d_ff,
                     dropout=configs.dropout,
                     activation=configs.activation,
+                    use_mc_dropout=self.enable_mc_dropout,
                 )
                 for l in range(configs.e_layers)
             ],
@@ -68,12 +76,14 @@ class Model(nn.Module):
                         configs.d_model,
                         configs.n_heads,
                         configs.dropout,
-                        configs.output_attention
+                        configs.output_attention,
+                        use_mc_dropout=self.enable_mc_dropout,
                     ),
                     configs.d_model,
                     configs.d_ff,
                     dropout=configs.dropout,
                     activation=configs.activation,
+                    use_mc_dropout=self.enable_mc_dropout,
                 )
                 for l in range(configs.e_layers)
             ],
@@ -84,10 +94,50 @@ class Model(nn.Module):
         self.mrgnn = MRGNN(configs, self.res_len)
 
         # step 5: projection
-        self.projection = nn.Linear(self.d_model * self.enc_in, configs.num_class)
+        if self.enable_bayesian:
+            self.projection = AleatoricLinear(self.d_model * self.enc_in, configs.num_class)
+        else:
+            self.projection = nn.Linear(self.d_model * self.enc_in, configs.num_class)
 
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+    def get_kl_loss(self):
+        """Compute KL divergence for all Bayesian layers"""
+        kl_loss = 0
+        for m in self.modules():
+            if isinstance(m, BayesianLinear):
+                kl_loss += m.kl_divergence()
+        return kl_loss
+
+
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None, mc_samples=None):
+        """
+        Forward pass with optional MC Dropout for uncertainty estimation.
+        
+        Args:
+            mc_samples: Number of MC samples. If None, uses 1 during training, config value during eval.
+                       If 1, single forward pass. If > 1, MC dropout with multiple passes.
+        
+        Returns:
+            If mc_samples == 1 or training: output logits (B, num_class)
+            If mc_samples > 1 and eval: tuple of (mean_output, uncertainty_variance)
+        """
+        # ALWAYS use single forward pass during training
+        if self.training:
+            return self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+        
+        # Determine number of MC samples for inference
+        if mc_samples is None:
+            mc_samples = self.mc_samples if self.enable_mc_dropout else 1
+        
+        # Single forward pass (non-MC inference)
+        if mc_samples == 1 or not self.enable_mc_dropout:
+            return self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+        
+        # Multiple forward passes for uncertainty estimation
+        return self._mc_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, mask, mc_samples)
+    
+    def _single_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+        """Single forward pass"""
         B, T, C = x_enc.shape
 
         # step1: multi_resolution_data
@@ -114,3 +164,45 @@ class Model(nn.Module):
         output = self.projection(output)
 
         return output
+    
+    def _mc_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask, mc_samples):
+        """Multiple forward passes for MC Dropout and Bayesian uncertainty estimation"""
+        means = []
+        log_vars = []
+        
+        # Set to eval mode (MC Dropout will still be active)
+        was_training = self.training
+        self.eval()
+        
+        with torch.no_grad():
+            for _ in range(mc_samples):
+                out = self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+                if self.enable_bayesian:
+                    logits, log_var = out
+                    means.append(logits)
+                    log_vars.append(log_var)
+                else:
+                    means.append(out)
+        
+        # Restore training mode if needed
+        if was_training:
+            self.train()
+        
+        # Stack predictions: (mc_samples, B, num_class)
+        all_means = torch.stack(means, dim=0)
+        mean_pred = all_means.mean(dim=0)  # (B, num_class)
+        
+        # Epistemic Uncertainty: Variance of the mean predictions
+        epistemic_unc = all_means.var(dim=0).mean(dim=1)  # (B,)
+        
+        if self.enable_bayesian:
+            # Aleatoric Uncertainty: Mean of the predicted variances
+            all_log_vars = torch.stack(log_vars, dim=0)
+            all_vars = torch.exp(all_log_vars)
+            aleatoric_unc = all_vars.mean(dim=0).mean(dim=1)  # (B,)
+            
+            # Total Uncertainty
+            total_unc = epistemic_unc + aleatoric_unc
+            return mean_pred, total_unc, epistemic_unc, aleatoric_unc
+        
+        return mean_pred, epistemic_unc

@@ -5,6 +5,7 @@ from math import sqrt
 from utils.masking import TriangularCausalMask, ProbMask
 from reformer_pytorch import LSHSelfAttention
 from einops import rearrange, repeat
+from layers.MCDropout import MCDropout
 
 
 class DSAttention(nn.Module):
@@ -17,12 +18,13 @@ class DSAttention(nn.Module):
         scale=None,
         attention_dropout=0.1,
         output_attention=False,
+        use_mc_dropout=False,
     ):
         super(DSAttention, self).__init__()
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
-        self.dropout = nn.Dropout(attention_dropout)
+        self.dropout = MCDropout(attention_dropout) if use_mc_dropout else nn.Dropout(attention_dropout)
 
     def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
         B, L, H, E = queries.shape
@@ -60,12 +62,13 @@ class FullAttention(nn.Module):
         scale=None,
         attention_dropout=0.1,
         output_attention=False,
+        use_mc_dropout=False,
     ):
         super(FullAttention, self).__init__()
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
-        self.dropout = nn.Dropout(attention_dropout)
+        self.dropout = MCDropout(attention_dropout) if use_mc_dropout else nn.Dropout(attention_dropout)
 
     def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
         B, L, H, E = queries.shape
@@ -99,13 +102,14 @@ class ProbAttention(nn.Module):
         scale=None,
         attention_dropout=0.1,
         output_attention=False,
+        use_mc_dropout=False,
     ):
         super(ProbAttention, self).__init__()
         self.factor = factor
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
-        self.dropout = nn.Dropout(attention_dropout)
+        self.dropout = MCDropout(attention_dropout) if use_mc_dropout else nn.Dropout(attention_dropout)
 
     def _prob_QK(self, Q, K, sample_k, n_top):  # n_top: c*ln(L_q)
         # Q [B, H, L, D]
@@ -277,12 +281,14 @@ class TwoStageAttentionLayer(nn.Module):
     ):
         super(TwoStageAttentionLayer, self).__init__()
         d_ff = d_ff or 4 * d_model
+        use_mc = getattr(configs, 'enable_mc_dropout', False)
         self.time_attention = AttentionLayer(
             FullAttention(
                 False,
                 configs.factor,
                 attention_dropout=configs.dropout,
                 output_attention=configs.output_attention,
+                use_mc_dropout=use_mc,
             ),
             d_model,
             n_heads,
@@ -293,6 +299,7 @@ class TwoStageAttentionLayer(nn.Module):
                 configs.factor,
                 attention_dropout=configs.dropout,
                 output_attention=configs.output_attention,
+                use_mc_dropout=use_mc,
             ),
             d_model,
             n_heads,
@@ -303,13 +310,14 @@ class TwoStageAttentionLayer(nn.Module):
                 configs.factor,
                 attention_dropout=configs.dropout,
                 output_attention=configs.output_attention,
+                use_mc_dropout=use_mc,
             ),
             d_model,
             n_heads,
         )
         self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
 
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = MCDropout(dropout) if use_mc else nn.Dropout(dropout)
 
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
@@ -378,6 +386,7 @@ class MedformerLayer(nn.Module):
         dropout=0.1,
         output_attention=False,
         no_inter=False,
+        use_mc_dropout=False,
     ):
         super().__init__()
 
@@ -389,6 +398,7 @@ class MedformerLayer(nn.Module):
                         factor=1,
                         attention_dropout=dropout,
                         output_attention=output_attention,
+                        use_mc_dropout=use_mc_dropout,
                     ),
                     d_model,
                     n_heads,
@@ -405,6 +415,7 @@ class MedformerLayer(nn.Module):
                     factor=1,
                     attention_dropout=dropout,
                     output_attention=output_attention,
+                    use_mc_dropout=use_mc_dropout,
                 ),
                 d_model,
                 n_heads,
@@ -436,7 +447,7 @@ class MedformerLayer(nn.Module):
         return x_out, attn_out
 
 class FormerLayer(nn.Module):
-    def __init__(self, num_blocks, d_model, n_heads, dropout=0.1, output_attention=False):
+    def __init__(self, num_blocks, d_model, n_heads, dropout=0.1, output_attention=False, use_mc_dropout=False):
         super().__init__()
 
         self.intra_attentions = nn.ModuleList(
@@ -447,6 +458,7 @@ class FormerLayer(nn.Module):
                         factor=1,
                         attention_dropout=dropout,
                         output_attention=output_attention,
+                        use_mc_dropout=use_mc_dropout,
                     ),
                     d_model,
                     n_heads,
@@ -470,12 +482,12 @@ class FormerLayer(nn.Module):
 
 
 class DifferenceAttention(nn.Module):
-    def __init__(self, mask_flag=True, factor=5, scale=None, attention_dropout=0.1, output_attention=False):
+    def __init__(self, mask_flag=True, factor=5, scale=None, attention_dropout=0.1, output_attention=False, use_mc_dropout=False):
         super(DifferenceAttention, self).__init__()
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
-        self.dropout = nn.Dropout(attention_dropout)
+        self.dropout = MCDropout(attention_dropout) if use_mc_dropout else nn.Dropout(attention_dropout)
 
     def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
         B, L, H, E = queries.shape
@@ -533,7 +545,7 @@ class DifferenceAttentionLayer(nn.Module):
 
 
 class DifferenceFormerlayer(nn.Module):
-    def __init__(self, enc_in, num_blocks, d_model, n_heads, dropout=0.1, output_attention=False):
+    def __init__(self, enc_in, num_blocks, d_model, n_heads, dropout=0.1, output_attention=False, use_mc_dropout=False):
         super(DifferenceFormerlayer, self).__init__()
         self.intra_attentions = nn.ModuleList(
             [
@@ -543,6 +555,7 @@ class DifferenceFormerlayer(nn.Module):
                         factor=1,
                         attention_dropout=dropout,
                         output_attention=output_attention,
+                        use_mc_dropout=use_mc_dropout,
                     ),
                     d_model,
                     n_heads,

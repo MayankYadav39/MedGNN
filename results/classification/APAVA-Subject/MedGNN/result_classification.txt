@@ -1,0 +1,85 @@
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.18567, Accuracy: 0.77565, Precision: 0.80585, Recall: 0.74110, F1: 0.74854, AUROC: 0.84359, AUPRC: 0.85138
+Test results --- Loss: 1.11949, Accuracy: 0.83229, Precision: 0.88715, Recall: 0.79540, F1: 0.80928, AUROC: 0.85310, AUPRC: 0.86851
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 0.60516, Accuracy: 0.72187, Precision: 0.73220, Recall: 0.73710, F1: 0.72146, AUROC: 0.83528, AUPRC: 0.83678
+Test results --- Loss: 0.53334, Accuracy: 0.77358, Precision: 0.78189, Recall: 0.74549, F1: 0.75279, AUROC: 0.78879, AUPRC: 0.81477
+Uncertainty Metrics:
+  Mean Variance: 0.00182
+  Mean Predictive Entropy: 0.38984
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: 0.0804
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.26396, Accuracy: 0.77565, Precision: 0.82736, Recall: 0.73533, F1: 0.74205, AUROC: 0.83733, AUPRC: 0.84907
+Test results --- Loss: 1.10875, Accuracy: 0.82669, Precision: 0.88422, Recall: 0.78856, F1: 0.80204, AUROC: 0.86981, AUPRC: 0.88223
+Uncertainty Metrics:
+  Mean Variance: 0.00360
+  Mean Predictive Entropy: 0.02832
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: 0.0629
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.05753, Accuracy: 0.74522, Precision: 0.74388, Recall: 0.72291, F1: 0.72764, AUROC: 0.82928, AUPRC: 0.83263
+Test results --- Loss: 1.27936, Accuracy: 0.83019, Precision: 0.87617, Recall: 0.79521, F1: 0.80846, AUROC: 0.80513, AUPRC: 0.83333
+Uncertainty Metrics:
+  Mean Variance: 0.00768
+  Mean Predictive Entropy: 0.03376
+  Mean Epistemic (Model): 0.00587
+  Mean Aleatoric (Data): 0.00180
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: -0.0662
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.26396, Accuracy: 0.77565, Precision: 0.82736, Recall: 0.73533, F1: 0.74205, AUROC: 0.83733, AUPRC: 0.84907
+Test results --- Loss: 1.10875, Accuracy: 0.82669, Precision: 0.88422, Recall: 0.78856, F1: 0.80204, AUROC: 0.86981, AUPRC: 0.88223
+Uncertainty Metrics:
+  Mean Variance: 0.00360
+  Mean Predictive Entropy: 0.02832
+  Mean Epistemic (Model): 0.00360
+  Mean Aleatoric (Data): 0.00000
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: 0.0629
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.26396, Accuracy: 0.77565, Precision: 0.82736, Recall: 0.73533, F1: 0.74205, AUROC: 0.83733, AUPRC: 0.84907
+Test results --- Loss: 1.10875, Accuracy: 0.82669, Precision: 0.88422, Recall: 0.78856, F1: 0.80204, AUROC: 0.86981, AUPRC: 0.88223
+Uncertainty Metrics:
+  Mean Variance: 0.00360
+  Mean Predictive Entropy: 0.02832
+  Mean Epistemic (Model): 0.00360
+  Mean Aleatoric (Data): 0.00000
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: 0.0629
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.05753, Accuracy: 0.74522, Precision: 0.74388, Recall: 0.72291, F1: 0.72764, AUROC: 0.82928, AUPRC: 0.83263
+Test results --- Loss: 1.27936, Accuracy: 0.83019, Precision: 0.87617, Recall: 0.79521, F1: 0.80846, AUROC: 0.80513, AUPRC: 0.83333
+Uncertainty Metrics:
+  Mean Variance: 0.00768
+  Mean Predictive Entropy: 0.03376
+  Mean Epistemic (Model): 0.00587
+  Mean Aleatoric (Data): 0.00180
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: -0.0662
+
+
+APAVA-Subject_MedGNN_APAVA_dm256_df512_nh8_el4_res2,4,6,8_node10_seed41_bs64_lr0.0001  
+Validation results --- Loss: 1.15257, Accuracy: 0.74381, Precision: 0.74180, Recall: 0.72195, F1: 0.72655, AUROC: 0.82969, AUPRC: 0.83174
+Test results --- Loss: 1.24741, Accuracy: 0.83159, Precision: 0.87906, Recall: 0.79639, F1: 0.80983, AUROC: 0.80537, AUPRC: 0.83342
+Uncertainty Metrics:
+  Mean Variance: 0.00763
+  Mean Predictive Entropy: 0.03383
+  Mean Epistemic (Model): 0.00583
+  Mean Aleatoric (Data): 0.00180
+  High Uncertainty Samples (>90th percentile): 143 (9.99%)
+  Uncertainty-Error Correlation: -0.0469
+
+

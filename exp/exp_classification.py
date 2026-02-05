@@ -16,6 +16,8 @@ from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import average_precision_score
+from utils.XAIUtilities import explain_prediction_and_uncertainty, get_top_features, get_clinical_mapping, decompose_evidence
+from utils.VisualXAI import generate_clinical_report
 
 warnings.filterwarnings("ignore")
 
@@ -72,10 +74,14 @@ class Exp_Classification(Exp_Basic):
                 padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
 
+                # Use mc_samples=1 to force single forward pass (no uncertainty during validation)
                 if self.swa:
-                    outputs = self.swa_model(batch_x, padding_mask, None, None)
+                    outputs = self.swa_model(batch_x, padding_mask, None, None, mc_samples=1)
                 else:
-                    outputs = self.model(batch_x, padding_mask, None, None)
+                    outputs = self.model(batch_x, padding_mask, None, None, mc_samples=1)
+
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]
 
                 pred = outputs.detach().cpu()
                 loss = criterion(pred, label.long().cpu())
@@ -184,7 +190,23 @@ class Exp_Classification(Exp_Basic):
                 label = label.to(self.device)
 
                 outputs = self.model(batch_x, padding_mask, None, None)
-                loss = criterion(outputs, label.long())
+                
+                if isinstance(outputs, tuple):
+                    # Heteroscedastic Loss for Aleatoric Uncertainty
+                    logits, log_var = outputs
+                    # Sample noise: z = mu + eps * exp(0.5 * log_var)
+                    std = torch.exp(0.5 * log_var)
+                    eps = torch.randn_like(std)
+                    z = logits + eps * std
+                    loss = criterion(z, label.long())
+                    
+                    # Add KL divergence loss for Bayesian weights
+                    kl_loss = self.model.get_kl_loss()
+                    kl_weight = self.args.batch_size / len(train_loader.dataset)
+                    loss = loss + kl_weight * kl_loss
+                else:
+                    loss = criterion(outputs, label.long())
+                
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -277,8 +299,24 @@ class Exp_Classification(Exp_Basic):
                 self.model.load_state_dict(torch.load(model_path, map_location='cuda'))
 
         criterion = self._select_criterion()
-        vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
-        test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
+        
+        # Check if MC Dropout is enabled
+        use_mc = getattr(self.args, 'enable_mc_dropout', False)
+        mc_samples = getattr(self.args, 'mc_samples', 10) if use_mc else 1
+        
+        if use_mc:
+            print(f"\nUsing MC Dropout with {mc_samples} samples for uncertainty estimation")
+            # Run test with MC Dropout
+            test_loss, test_metrics_dict, uncertainty_metrics = self._test_with_uncertainty(
+                test_data, test_loader, criterion, mc_samples
+            )
+            # For validation, use single pass (faster)
+            vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
+        else:
+            # Standard testing without uncertainty
+            vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
+            test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
+            uncertainty_metrics = None
 
         # result save
         folder_path = (
@@ -346,7 +384,267 @@ class Exp_Classification(Exp_Basic):
             f"AUROC: {test_metrics_dict['AUROC']:.5f}, "
             f"AUPRC: {test_metrics_dict['AUPRC']:.5f}\n"
         )
+        
+        # Add uncertainty metrics if available
+        if uncertainty_metrics is not None:
+            uncertainty_str = (
+                f"Uncertainty Metrics:\n"
+                f"  Mean Variance: {uncertainty_metrics['mean_variance']:.5f}\n"
+                f"  Mean Predictive Entropy: {uncertainty_metrics['mean_entropy']:.5f}\n"
+            )
+            
+            if 'mean_epistemic' in uncertainty_metrics:
+                uncertainty_str += (
+                    f"  Mean Epistemic (Model): {uncertainty_metrics['mean_epistemic']:.5f}\n"
+                    f"  Mean Aleatoric (Data): {uncertainty_metrics['mean_aleatoric']:.5f}\n"
+                )
+            
+            uncertainty_str += (
+                f"  High Uncertainty Samples (>90th percentile): {uncertainty_metrics['high_uncertainty_count']} "
+                f"({uncertainty_metrics['high_uncertainty_pct']:.2f}%)\n"
+                f"  Uncertainty-Error Correlation: {uncertainty_metrics['uncertainty_error_corr']:.4f}\n"
+            )
+            print(uncertainty_str)
+            f.write(uncertainty_str)
+            
+            # Save detailed uncertainty data
+            uncertainty_path = folder_path + 'uncertainty_data.npz'
+            np.savez(
+                uncertainty_path,
+                predictions=uncertainty_metrics['predictions'],
+                true_labels=uncertainty_metrics['true_labels'],
+                variance=uncertainty_metrics['variance'],
+                entropy=uncertainty_metrics['entropy'],
+                epistemic=uncertainty_metrics['epistemic'],
+                aleatoric=uncertainty_metrics['aleatoric'],
+            )
+            print(f"Saved uncertainty data to {uncertainty_path}")
+        
         f.write("\n")
         f.write("\n")
         f.close()
         return
+    
+    def _test_with_uncertainty(self, test_data, test_loader, criterion, mc_samples):
+        """Test with MC Dropout uncertainty estimation"""
+        total_loss = []
+        all_preds = []
+        all_trues = []
+        all_variances = []
+        all_entropies = []
+        all_epistemic = []
+        all_aleatoric = []
+        
+        model_to_use = self.swa_model if self.swa else self.model
+        model_to_use.eval()
+        
+        with torch.no_grad():
+            for i, (batch_x, label, padding_mask) in enumerate(test_loader):
+                batch_x = batch_x.float().to(self.device)
+                padding_mask = padding_mask.float().to(self.device)
+                label = label.to(self.device)
+                
+                # Get predictions with uncertainty
+                # Return can be (mean, total_unc, epistemic, aleatoric) or (mean, variance)
+                out = model_to_use(batch_x, padding_mask, None, None, mc_samples=mc_samples)
+                
+                if len(out) == 4:
+                    output, variance, epistemic, aleatoric = out
+                else:
+                    output, variance = out
+                    epistemic = variance
+                    aleatoric = torch.zeros_like(variance)
+                
+                # Compute loss on mean prediction
+                loss = criterion(output.cpu(), label.long().cpu())
+                total_loss.append(loss.item())
+                
+                # Compute predictive entropy
+                probs = torch.nn.functional.softmax(output, dim=-1)
+                entropy = -(probs * torch.log(probs + 1e-10)).sum(dim=1)
+                
+                all_preds.append(output.detach())
+                all_trues.append(label)
+                all_variances.append(variance.detach())
+                all_entropies.append(entropy.detach())
+                
+                if len(out) == 4:
+                    all_epistemic.append(epistemic.detach())
+                    all_aleatoric.append(aleatoric.detach())
+        
+        total_loss = np.mean(total_loss)
+        
+        # Concatenate all batches
+        preds = torch.cat(all_preds, 0)
+        trues = torch.cat(all_trues, 0)
+        variances = torch.cat(all_variances, 0).cpu().numpy()
+        entropies = torch.cat(all_entropies, 0).cpu().numpy()
+        
+        if all_epistemic:
+            epistemic_np = torch.cat(all_epistemic, 0).cpu().numpy()
+            aleatoric_np = torch.cat(all_aleatoric, 0).cpu().numpy()
+        else:
+            epistemic_np = variances
+            aleatoric_np = np.zeros_like(variances)
+        
+        # Compute classification metrics
+        probs = torch.nn.functional.softmax(preds, dim=-1)
+        trues_onehot = torch.nn.functional.one_hot(
+            trues.reshape(-1,).to(torch.long),
+            num_classes=self.args.num_class,
+        ).float().cpu().numpy()
+        
+        predictions = torch.argmax(probs, dim=1).cpu().numpy()
+        probs_np = probs.cpu().numpy()
+        trues_np = trues.flatten().cpu().numpy()
+        
+        metrics_dict = {
+            "Accuracy": accuracy_score(trues_np, predictions),
+            "Precision": precision_score(trues_np, predictions, average="macro"),
+            "Recall": recall_score(trues_np, predictions, average="macro"),
+            "F1": f1_score(trues_np, predictions, average="macro"),
+            "AUROC": roc_auc_score(trues_onehot, probs_np, multi_class="ovr"),
+            "AUPRC": average_precision_score(trues_onehot, probs_np, average="macro"),
+        }
+        
+        # Compute uncertainty metrics
+        errors = (predictions != trues_np).astype(float)
+        threshold_90 = np.percentile(variances, 90)
+        high_uncertainty_mask = variances > threshold_90
+        
+        uncertainty_metrics = {
+            'mean_variance': np.mean(variances),
+            'mean_entropy': np.mean(entropies),
+            'mean_epistemic': np.mean(epistemic_np),
+            'mean_aleatoric': np.mean(aleatoric_np),
+            'high_uncertainty_count': int(high_uncertainty_mask.sum()),
+            'high_uncertainty_pct': 100.0 * high_uncertainty_mask.sum() / len(variances),
+            'uncertainty_error_corr': np.corrcoef(variances, errors)[0, 1],
+            'predictions': predictions,
+            'true_labels': trues_np,
+            'variance': variances,
+            'entropy': entropies,
+            'epistemic': epistemic_np,
+            'aleatoric': aleatoric_np,
+        }
+        
+        model_to_use.train()
+        return total_loss, metrics_dict, uncertainty_metrics
+
+    def explain(self, setting, sample_indices=None):
+        """
+        Generate explanations for specific samples (or top-uncertainty samples).
+        """
+        _, test_loader = self._get_data(flag="TEST")
+        model = self.swa_model if self.swa else self.model
+        model.eval()
+
+        print(f"\nGenerating explanations for uncertainty and predictions...")
+        
+        # We need uncertainty_data.npz to find high-uncertainty samples if indices not provided
+        folder_path = f"./results/{self.args.task_name}/{self.args.model_id}/{self.args.model}/"
+        data_path = os.path.join(folder_path, 'uncertainty_data.npz')
+        
+        if sample_indices is None and os.path.exists(data_path):
+            data = np.load(data_path)
+            variance = data['variance']
+            # Get top 5 most uncertain samples
+            sample_indices = np.argsort(variance)[-5:].tolist()
+            print(f"No indices provided. Explaining top 5 most uncertain samples: {sample_indices}")
+        elif sample_indices is None:
+            sample_indices = [0] # Default to first sample
+            print(f"No uncertainty data found. Explaining sample 0.")
+
+        all_explanations = []
+
+        # Collect samples from loader
+        collected_samples = []
+        collected_labels = []
+        collected_masks = []
+        
+        with torch.no_grad():
+            for i, (batch_x, label, padding_mask) in enumerate(test_loader):
+                collected_samples.append(batch_x)
+                collected_labels.append(label)
+                collected_masks.append(padding_mask)
+                if sum([s.size(0) for s in collected_samples]) > max(sample_indices):
+                    break
+        
+        X = torch.cat(collected_samples, 0)
+        Y = torch.cat(collected_labels, 0)
+        M = torch.cat(collected_masks, 0)
+
+        for idx in sample_indices:
+            x = X[idx:idx+1].to(self.device).requires_grad_(True)
+            y = Y[idx].item()
+            
+            # 1. Generate Attribution
+            pred_attr, unc_attr = explain_prediction_and_uncertainty(
+                model, x, mc_samples=getattr(self.args, 'mc_samples', 10)
+            )
+            
+            # 2. Extract top features
+            # Get feature names if available (defaulting to indices)
+            # 2. Extract top features
+            # Get clinical feature names
+            feat_dim = x.shape[2]
+            feature_names = get_clinical_mapping(self.args.data, feat_dim)
+            
+            top_pred = get_top_features(pred_attr, feature_names=feature_names, top_k=5)
+            top_unc = get_top_features(unc_attr, feature_names=feature_names, top_k=5)
+            
+            # Reasoning (+1 and -1)
+            pos_evidence, neg_evidence = decompose_evidence(pred_attr)
+            
+            # 3. Generate Visual Report
+            report_dir = os.path.join(folder_path, f"explanations/sample_{idx}")
+            # Get prediction confidence from uncertainty metadata if available
+            confidence = 100.0 # Placeholder if not found
+            
+            pred_img, unc_img = generate_clinical_report(
+                idx, int(y), confidence, 
+                pred_attr[0], unc_attr[0], x[0].detach().cpu().numpy(), 
+                report_dir
+            )
+            
+            explanation = {
+                'sample_index': idx,
+                'true_label': int(y),
+                'top_prediction_features': top_pred,
+                'top_uncertainty_features': top_unc,
+                'reasoning': {
+                    'supporting_evidence': get_top_features(pos_evidence.reshape(1, 1, -1), feature_names=feature_names),
+                    'contradicting_evidence': get_top_features(neg_evidence.reshape(1, 1, -1), feature_names=feature_names)
+                },
+                'visual_reports': {
+                    'prediction_reason': pred_img,
+                    'uncertainty_reason': unc_img
+                }
+            }
+            all_explanations.append(explanation)
+            
+            print(f"\nSample {idx} (Label {y}):")
+            print("  Top features for Prediction (Cumulative):")
+            for f in top_pred:
+                print(f"    - {f['name']}: {f['importance']:.4f}")
+            
+            print("  Reasoning (+ vs -):")
+            print("    Positive (Supporting):")
+            for f in explanation['reasoning']['supporting_evidence']:
+                print(f"      - {f['name']}: +{f['importance']:.4f}")
+            print("    Negative (Contradicting):")
+            for f in explanation['reasoning']['contradicting_evidence']:
+                print(f"      - {f['name']}: -{f['importance']:.4f}")
+                
+            print("  Top features for Uncertainty:")
+            for f in top_unc:
+                print(f"    - {f['name']}: {f['importance']:.4f}")
+
+        # Save explanations
+        save_path = os.path.join(folder_path, 'explanations.json')
+        import json
+        with open(save_path, 'w') as f:
+            json.dump(all_explanations, f, indent=4)
+        print(f"\nExplanations saved to {save_path}")
+        
+        return all_explanations
