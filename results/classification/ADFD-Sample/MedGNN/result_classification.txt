@@ -1,5 +1,0 @@
-ADFD-Sample_MedGNN_ADFD-Sample_dm256_df512_nh8_el6_res2_node10_seed41_bs128_lr0.0001  
-Validation results --- Loss: 0.04010, Accuracy: 0.98824, Precision: 0.98826, Recall: 0.98729, F1: 0.98777, AUROC: 0.99933, AUPRC: 0.99871
-Test results --- Loss: 0.03997, Accuracy: 0.98645, Precision: 0.98670, Recall: 0.98509, F1: 0.98588, AUROC: 0.99941, AUPRC: 0.99880
-
-

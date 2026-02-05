@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# ML artifacts
+checkpoints/
+results/
+*.pth
+*.npz
+
+# Node / frontend
+node_modules/
+dist/
+
+# OS
+.DS_Store
