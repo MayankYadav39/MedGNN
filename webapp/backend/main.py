@@ -110,7 +110,7 @@ async def get_sample(index: int):
     class Args:
         def __init__(self, c):
             self.data = "APAVA"
-            self.root_path = "../../../dataset/APAVA/"
+            self.root_path = "../../../captum_env/dataset/APAVA/"
             self.batch_size = 1
             self.num_workers = 0
             self.seq_len = c.seq_len
@@ -170,6 +170,11 @@ async def predict(request: InferenceRequest):
             probs = torch.softmax(logits, dim=-1)
             prediction = torch.argmax(probs, dim=-1)
             
+            # Debug: Print actual uncertainty values
+            print(f"[BACKEND DEBUG] Total uncertainty: {total_unc.tolist()}")
+            print(f"[BACKEND DEBUG] Epistemic: {epistemic.tolist()}")
+            print(f"[BACKEND DEBUG] Aleatoric: {aleatoric.tolist()}")
+            
         return {
             "prediction": prediction.tolist(),
             "probabilities": probs.tolist(),
@@ -204,6 +209,11 @@ async def explain(request: InferenceRequest, target_class: Optional[int] = None)
         
         # Decompose evidence
         pos_ev, neg_ev = decompose_evidence(pred_attr)
+        
+        # Debug: Print attribution shapes
+        print(f"[BACKEND DEBUG] pred_attr shape: {pred_attr.shape}")
+        print(f"[BACKEND DEBUG] unc_attr shape: {unc_attr.shape}")
+        print(f"[BACKEND DEBUG] unc_attr sample values: {unc_attr[0, :5, :].tolist()}")  # First 5 timesteps
         
         return {
             "prediction_attribution": pred_attr.tolist(),

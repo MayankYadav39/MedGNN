@@ -2,8 +2,8 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const UncertaintyGauge = ({ value, label, color = 'var(--accent-blue)', subLabel }) => {
-    // Value usually 0-1 for normalized uncertainty or 0-100 for percentage
-    const percentage = Math.min(100, Math.max(0, value * 100));
+    // Value is now expected to be 0-100 (percentage)
+    const percentage = Math.min(100, Math.max(0, value));
     const radius = 45;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (percentage / 100) * circumference;
@@ -16,7 +16,7 @@ const UncertaintyGauge = ({ value, label, color = 'var(--accent-blue)', subLabel
                     <circle
                         cx="50" cy="50" r={radius}
                         fill="transparent"
-                        stroke="rgba(255,255,255,0.05)"
+                        stroke="rgba(0,0,0,0.08)"
                         strokeWidth="8"
                     />
                     <motion.circle
@@ -36,7 +36,7 @@ const UncertaintyGauge = ({ value, label, color = 'var(--accent-blue)', subLabel
                     position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                     display: 'flex', flexDirection: 'column', alignItems: 'center'
                 }}>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>{Math.round(percentage)}%</span>
+                    <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>{percentage.toFixed(2)}%</span>
                 </div>
             </div>
             {subLabel && <p style={{ margin: '16px 0 0 0', fontSize: '0.8rem', opacity: 0.7 }}>{subLabel}</p>}

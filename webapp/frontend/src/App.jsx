@@ -7,6 +7,9 @@ import SignalPlot from './components/SignalPlot';
 import ProbabilityChart from './components/ProbabilityChart';
 import UncertaintyTimeline from './components/UncertaintyTimeline';
 
+// Configuration: Change this to your Ngrok Backend URL if tunneling
+const API_BASE_URL = "http://localhost:8000";
+
 const App = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
@@ -20,24 +23,24 @@ const App = () => {
     const mockSignal = Array.from({ length: T }, () => Array.from({ length: C }, () => Math.random() - 0.5));
 
     setData({
-      prediction: [2],
-      probabilities: [[0.1, 0.15, 0.65, 0.1]],
-      uncertainty: { total: [0.12], epistemic: [0.08], aleatoric: [0.04] },
+      prediction: [0],
+      probabilities: [[0, 0, 0, 0]],
+      uncertainty: { total: [0], epistemic: [0], aleatoric: [0] },
       signal: mockSignal
     });
 
     setExplanation({
       top_features_prediction: [
-        { name: 'ECG Lead II', importance: 0.85 },
-        { name: 'Heart Rate', importance: 0.72 },
-        { name: 'SPO2', importance: 0.45 }
+        { name: 'Feature 1', importance: 0 },
+        { name: 'Feature 2', importance: 0 },
+        { name: 'Feature 3', importance: 0 }
       ],
       top_features_uncertainty: [
-        { name: 'Signal Noise (Ch 3)', importance: 0.92 },
-        { name: 'Baseline Wander', importance: 0.61 }
+        { name: 'Feature 1 (Signal)', importance: 0 },
+        { name: 'Feature 2 (Noise)', importance: 0 }
       ],
-      prediction_attribution: Array.from({ length: T }, () => Array.from({ length: C }, () => Math.random() * 0.1)),
-      uncertainty_attribution: Array.from({ length: T }, () => Array.from({ length: C }, () => Math.random() * 0.2))
+      prediction_attribution: [Array.from({ length: T }, () => Array.from({ length: C }, () => 0))],
+      uncertainty_attribution: [Array.from({ length: T }, () => Array.from({ length: C }, () => 0))]
     });
   };
 
@@ -50,20 +53,29 @@ const App = () => {
     setExplanation(null);
     try {
       // 1. Fetch specific sample
-      const sampleRes = await axios.get(`http://localhost:8000/sample/${selectedSample}`);
+      const sampleRes = await axios.get(`${API_BASE_URL}/sample/${selectedSample}`, {
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
       const signal = sampleRes.data.data;
 
       // 2. Predict & Explain
       const [res, exp] = await Promise.all([
-        axios.post('http://localhost:8000/predict', { data: [signal] }),
-        axios.post('http://localhost:8000/explain', { data: [signal], steps: 10 })
+        axios.post(`${API_BASE_URL}/predict`, { data: [signal] }, { headers: { "ngrok-skip-browser-warning": "true" } }),
+        axios.post(`${API_BASE_URL}/explain`, { data: [signal], steps: 10 }, { headers: { "ngrok-skip-browser-warning": "true" } })
       ]);
 
       setData({
         signal: signal,
         label: sampleRes.data.label,
-        ...res.data
+        prediction: res.data.prediction,
+        probabilities: res.data.probabilities,
+        uncertainty: {
+          total: res.data.uncertainty.total.map(v => v * 100),
+          epistemic: res.data.uncertainty.epistemic.map(v => v * 100),
+          aleatoric: res.data.uncertainty.aleatoric.map(v => v * 100)
+        }
       });
+
       setExplanation(exp.data);
     } catch (err) {
       console.error("API Error:", err);
@@ -87,9 +99,9 @@ const App = () => {
           </div>
           <div>
             <h2 className="brand-font" style={{ margin: 0, fontSize: '1.6rem', lineHeight: 1 }}>
-              MedGNN <span className="brand-gradient" style={{ fontSize: '0.9rem' }}>ULTRA</span>
+              X-MedBayes <span className="brand-gradient" style={{ fontSize: '0.9rem' }}>PRO</span>
             </h2>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.1em' }}>PRECISION DIAGNOSTICS</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.1em' }}>EXPLAINABLE MEDICAL AI</div>
           </div>
         </motion.div>
 
@@ -98,7 +110,7 @@ const App = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="glass-card"
-          style={{ padding: '24px', background: 'linear-gradient(180deg, rgba(14, 165, 233, 0.05), transparent)' }}
+          style={{ padding: '24px', background: 'linear-gradient(180deg, rgba(14, 165, 233, 0.03), transparent)' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
             <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '8px', borderRadius: '10px' }}>
@@ -140,9 +152,9 @@ const App = () => {
       <main className="main-content">
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 style={{ margin: 0, fontSize: '2.4rem', fontWeight: 800 }} className="glow-text">Neural Intelligence Dashboard</h1>
+            <h1 style={{ margin: 0, fontSize: '2.4rem', fontWeight: 800 }} className="glow-text">Dashboard</h1>
             <p style={{ margin: '6px 0 0 0', color: 'var(--text-muted)', fontSize: '1rem', fontWeight: 500 }}>
-              Multi-Resolution Graph Neural Networks for Clinical Inference
+              Transparent Clinical Inference with Uncertainty Quantification
             </p>
           </motion.div>
 
@@ -158,7 +170,7 @@ const App = () => {
                 value={selectedSample}
                 onChange={(e) => setSelectedSample(parseInt(e.target.value) || 0)}
                 style={{
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)', color: 'white',
+                  background: 'rgba(0,0,0,0.03)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)',
                   width: '50px', outline: 'none', fontWeight: 800, padding: '4px 8px', borderRadius: '6px', textAlign: 'center'
                 }}
               />
@@ -186,7 +198,7 @@ const App = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="glass-card"
-            style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(34, 211, 238, 0.05))' }}
+            style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(6, 182, 212, 0.05))' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
               <Brain size={20} color="var(--accent-blue)" />
@@ -236,10 +248,10 @@ const App = () => {
             style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
           >
             <UncertaintyTimeline
-              epistemic={explanation?.uncertainty_attribution.map(step => Math.max(...step) * 0.5) || []}
-              aleatoric={explanation?.uncertainty_attribution.map(step => Math.min(...step) * 0.2) || []}
+              epistemic={explanation?.uncertainty_attribution?.[0]?.map(step => Math.max(...step) * 10000) || []}
+              aleatoric={explanation?.uncertainty_attribution?.[0]?.map(step => Math.abs(Math.min(...step)) * 10000) || []}
             />
-            <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px', background: 'rgba(255,255,255,0.02)' }}>
+            <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px', background: 'rgba(0,0,0,0.01)' }}>
               <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '12px', borderRadius: '14px' }}>
                 <FileText size={28} color="var(--accent-blue)" />
               </div>
@@ -266,27 +278,27 @@ const App = () => {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <SignalPlot
-              label="Sensor Alpha (ECG)"
+              label="Feature 1"
               data={data?.signal.map(s => s[0])}
-              attribution={explanation?.prediction_attribution.map(s => s[0])}
+              attribution={explanation?.prediction_attribution?.[0]?.map(s => s[0])}
               color="var(--accent-cyan)"
             />
             <SignalPlot
-              label="Sensor Beta (HR)"
+              label="Feature 2"
               data={data?.signal.map(s => s[1])}
-              attribution={explanation?.prediction_attribution.map(s => s[1])}
+              attribution={explanation?.prediction_attribution?.[0]?.map(s => s[1])}
               color="var(--accent-blue)"
             />
             <SignalPlot
-              label="Sensor Gamma (SPO2)"
+              label="Feature 3"
               data={data?.signal.map(s => s[2])}
-              attribution={explanation?.uncertainty_attribution.map(s => s[2])}
+              attribution={explanation?.uncertainty_attribution?.[0]?.map(s => s[2])}
               color="var(--accent-violet)"
             />
             <SignalPlot
-              label="Sensor Delta (BP)"
+              label="Feature 4"
               data={data?.signal.map(s => s[3])}
-              attribution={explanation?.uncertainty_attribution.map(s => s[3])}
+              attribution={explanation?.uncertainty_attribution?.[0]?.map(s => s[3])}
               color="var(--accent-amber)"
             />
           </div>
@@ -343,7 +355,7 @@ const App = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
           className="glass-card"
-          style={{ marginBottom: '40px', background: 'linear-gradient(180deg, rgba(139, 92, 246, 0.05), transparent)' }}
+          style={{ marginBottom: '40px', background: 'linear-gradient(180deg, rgba(139, 92, 246, 0.03), transparent)' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             <Brain size={24} color="var(--accent-violet)" />
@@ -351,7 +363,7 @@ const App = () => {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
             {explanation?.top_features_uncertainty.map((feat, i) => (
-              <div key={i} className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
+              <div key={i} className="glass-card" style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.02)', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
                 <span className="stat-label" style={{ color: 'var(--accent-violet)' }}>Channel Interference {i + 1}</span>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', margin: '6px 0' }}>{feat.name}</div>
                 <div style={{ width: '100%', height: '6px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '3px', marginTop: '10px', overflow: 'hidden' }}>

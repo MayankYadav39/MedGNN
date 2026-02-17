@@ -130,25 +130,6 @@ def get_clinical_mapping(dataset_name, num_channels):
     Provides human-readable names for features based on the dataset modality.
     """
     # ECG/Vitals Mapping (Example for APAVA)
-    apava_mapping = {
-        0: "ECG Lead I", 1: "ECG Lead II", 2: "Respiration", 3: "SPO2",
-        4: "Heart Rate", 5: "Systolic BP", 6: "Diastolic BP", 7: "MAP",
-        8: "Temperature", 9: "Pulse", 10: "CO2", 11: "Glucose",
-        12: "O2 Flow", 13: "Respiratory Rate", 14: "ST Segment", 15: "QT Interval"
-    }
-    
-    # EEG 10-20 System Mapping
-    eeg_mapping = {
-        0: "Fp1", 1: "Fp2", 2: "F7", 3: "F3", 4: "Fz", 5: "F4", 6: "F8",
-        7: "T7", 8: "C3", 9: "Cz", 10: "C4", 11: "T8", 12: "P7", 13: "P3",
-        14: "Pz", 15: "P4", 16: "P8", 17: "O1", 18: "O2", 19: "T5", 20: "T6", 21: "A1"
-    }
-    
-    if "APAVA" in dataset_name.upper():
-        mapping = apava_mapping
-    elif "EEG" in dataset_name.upper() or "BRAIN" in dataset_name.upper():
-        mapping = eeg_mapping
-    else:
-        mapping = {}
-        
-    return [mapping.get(i, f"Channel {i}") for i in range(num_channels)]
+    # Generic Mapping as per user request (Data source uncertain)
+    # Returning Feature 1, Feature 2, etc.
+    return [f"Feature {i+1}" for i in range(num_channels)]

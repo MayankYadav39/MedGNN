@@ -36,17 +36,27 @@ const SignalPlot = ({ data, attribution, label, color = 'var(--accent-blue)' }) 
             tooltip: {
                 mode: 'index',
                 intersect: false,
-                backgroundColor: 'rgba(16, 24, 39, 0.9)',
-                titleColor: '#3b82f6',
-                bodyColor: '#fff',
-                borderColor: 'rgba(255,255,255,0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                titleColor: '#0ea5e9',
+                bodyColor: '#0f172a',
+                borderColor: 'rgba(0,0,0,0.1)',
                 borderWidth: 1,
             }
         },
         scales: {
-            x: { display: false },
+            x: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Timestamp',
+                    color: 'var(--text-secondary)',
+                    font: { size: 10, weight: 600 }
+                },
+                grid: { display: false },
+                ticks: { display: true, color: 'var(--text-secondary)', font: { size: 10 } }
+            },
             y: {
-                grid: { color: 'rgba(255,255,255,0.05)' },
+                grid: { color: 'rgba(0,0,0,0.05)' },
                 ticks: { color: 'var(--text-secondary)', font: { size: 10 } }
             }
         },

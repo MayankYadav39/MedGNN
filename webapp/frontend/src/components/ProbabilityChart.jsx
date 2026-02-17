@@ -27,16 +27,16 @@ const ProbabilityChart = ({ probabilities, classes }) => {
         plugins: {
             legend: { display: false },
             tooltip: {
-                backgroundColor: 'rgba(16, 24, 39, 0.9)',
-                titleColor: '#3b82f6',
-                bodyColor: '#fff',
-                borderColor: 'rgba(255,255,255,0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                titleColor: '#0ea5e9',
+                bodyColor: '#0f172a',
+                borderColor: 'rgba(0,0,0,0.1)',
                 borderWidth: 1,
             }
         },
         scales: {
             x: {
-                grid: { color: 'rgba(255,255,255,0.05)' },
+                grid: { color: 'rgba(0,0,0,0.05)' },
                 ticks: { color: 'var(--text-secondary)', callback: (v) => `${(v * 100).toFixed(0)}%` },
                 max: 1.0,
                 min: 0
